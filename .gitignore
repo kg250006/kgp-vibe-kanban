@@ -97,6 +97,7 @@ Caddyfile
 Caddyfile.dev
 
 # KGP internal — planning/process artifacts must never reach this public fork
+.secrets.txt
 .deployment-profile.json
 .claude/
 CLAUDE.local.md
