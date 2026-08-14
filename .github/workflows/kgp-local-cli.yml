@@ -1,0 +1,120 @@
+name: KGP Local CLI
+
+# Builds the local Vibe Kanban CLI with the KG ProDesign cloud URL baked in
+# (VK_SHARED_API_BASE via build.rs option_env!, VITE_VK_SHARED_API_BASE for the
+# frontend), mirroring local-build.sh per platform, then publishes an npm
+# tarball to the rolling GitHub release `kgp-cli-latest`.
+#
+# Install anywhere:
+#   npm install -g https://github.com/kg250006/kgp-vibe-kanban/releases/download/kgp-cli-latest/kgp-vibe-kanban-cli.tgz
+# Then run: vibe-kanban   (auto-connects to https://kanban.srv1.kgprodesign.com)
+
+on:
+  workflow_dispatch:
+
+env:
+  VK_SHARED_API_BASE: https://kanban.srv1.kgprodesign.com
+  VITE_VK_SHARED_API_BASE: https://kanban.srv1.kgprodesign.com
+
+jobs:
+  build-binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos-arm64
+          - os: ubuntu-latest
+            platform: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libssl-dev libclang-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: kgp-cli-${{ matrix.platform }}
+
+      - name: Install frontend deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web app (frontend bakes VITE_VK_SHARED_API_BASE)
+        run: pnpm -C packages/local-web build
+
+      - name: Build Rust binaries (backend bakes VK_SHARED_API_BASE)
+        run: |
+          cargo build --release --manifest-path Cargo.toml
+          cargo build --release --bin vibe-kanban-mcp --manifest-path Cargo.toml
+
+      - name: Package platform zips (mirrors local-build.sh)
+        run: |
+          mkdir -p npx-cli/dist/${{ matrix.platform }}
+          cp target/release/server vibe-kanban
+          zip -q vibe-kanban.zip vibe-kanban && rm vibe-kanban
+          mv vibe-kanban.zip npx-cli/dist/${{ matrix.platform }}/
+          cp target/release/vibe-kanban-mcp vibe-kanban-mcp
+          zip -q vibe-kanban-mcp.zip vibe-kanban-mcp && rm vibe-kanban-mcp
+          mv vibe-kanban-mcp.zip npx-cli/dist/${{ matrix.platform }}/
+          cp target/release/review vibe-kanban-review
+          zip -q vibe-kanban-review.zip vibe-kanban-review && rm vibe-kanban-review
+          mv vibe-kanban-review.zip npx-cli/dist/${{ matrix.platform }}/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.platform }}
+          path: npx-cli/dist/
+          retention-days: 3
+
+  package-and-release:
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: npx-cli/dist/
+          merge-multiple: true
+
+      - name: Build npx wrapper and pack
+        run: |
+          cd npx-cli
+          ls -R dist/
+          npm ci
+          npm run build
+          npm pack
+          mv vibe-kanban-*.tgz kgp-vibe-kanban-cli.tgz
+
+      - name: Publish rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: kgp-cli-latest
+          name: KGP Local CLI (rolling)
+          body: |
+            Local Vibe Kanban CLI with the KG ProDesign cloud baked in
+            (https://kanban.srv1.kgprodesign.com — no VK_SHARED_API_BASE needed).
+
+            Install/update:
+            ```
+            npm install -g https://github.com/kg250006/kgp-vibe-kanban/releases/download/kgp-cli-latest/kgp-vibe-kanban-cli.tgz
+            ```
+            Platforms: macOS arm64, Linux x64.
+          files: npx-cli/kgp-vibe-kanban-cli.tgz
