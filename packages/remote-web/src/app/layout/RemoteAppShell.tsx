@@ -59,8 +59,9 @@ export function RemoteAppShell({ children }: RemoteAppShellProps) {
   const isWorkspaceContextRoute = location.pathname.includes("/workspaces");
   const isProjectRoute = /^\/projects\/[^/]+/.test(location.pathname);
   const isExportRoute = location.pathname === "/export";
+  // KGP self-hosted instance: upstream's shutdown does not apply here.
   const showCloudShutdownBanner =
-    isExportRoute || (isSignedIn && isProjectRoute);
+    false && (isExportRoute || (isSignedIn && isProjectRoute));
 
   useCommandBarShortcut(
     () => CommandBarDialog.show(),
