@@ -95,3 +95,13 @@ vibe-kanban-cloud/
 *.ts.net.key
 Caddyfile
 Caddyfile.dev
+
+# KGP internal — planning/process artifacts must never reach this public fork
+.deployment-profile.json
+.claude/
+CLAUDE.local.md
+.mcp.json
+PRPs/
+TO-DOS.md
+PLAN.md
+*.local.md
