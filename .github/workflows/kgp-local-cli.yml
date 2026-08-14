@@ -50,12 +50,14 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build web app (frontend bakes VITE_VK_SHARED_API_BASE)
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm -C packages/local-web build
 
+      # Only the three shipped bins — a bare workspace build would drag in
+      # tauri-app, which needs glib/GTK system libs the runners lack.
       - name: Build Rust binaries (backend bakes VK_SHARED_API_BASE)
-        run: |
-          cargo build --release --manifest-path Cargo.toml
-          cargo build --release --bin vibe-kanban-mcp --manifest-path Cargo.toml
+        run: cargo build --release --bin server --bin vibe-kanban-mcp --bin review
 
       - name: Package platform zips (mirrors local-build.sh)
         run: |
