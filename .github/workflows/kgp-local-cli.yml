@@ -15,6 +15,11 @@ on:
 env:
   VK_SHARED_API_BASE: https://kanban.srv1.kgprodesign.com
   VITE_VK_SHARED_API_BASE: https://kanban.srv1.kgprodesign.com
+  # Relay/tunnel: backend bakes via crates/server/build.rs, frontend via
+  # web-core relayBackendApi.ts (unset would fall back to the API base,
+  # which has no /v1/relay routes).
+  VK_SHARED_RELAY_API_BASE: https://relay.srv1.kgprodesign.com
+  VITE_RELAY_API_BASE_URL: https://relay.srv1.kgprodesign.com
 
 jobs:
   build-binaries:
