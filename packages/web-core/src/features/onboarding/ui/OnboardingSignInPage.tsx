@@ -13,6 +13,7 @@ import { useTheme } from '@/shared/hooks/useTheme';
 import { OAuthSignInButton } from '@vibe/ui/components/OAuthButtons';
 import { PrimaryButton } from '@vibe/ui/components/PrimaryButton';
 import { oauthApi, type AuthMethodsResponse } from '@/shared/lib/api';
+import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
 import { getFirstProjectDestination } from '@/shared/lib/firstProjectDestination';
 import { useOrganizationStore } from '@/shared/stores/useOrganizationStore';
 import { isTauriApp } from '@/shared/lib/platform';
@@ -289,15 +290,40 @@ export function OnboardingSignInPage() {
             )}
           </header>
 
-          {isAuthMethodsError && !isLoggedIn && (
-            <div className="rounded-sm border border-error/30 bg-error/10 p-base">
-              <p className="text-sm text-high">
-                {authMethodsError instanceof Error
-                  ? authMethodsError.message
-                  : 'Failed to load available sign-in methods.'}
-              </p>
-            </div>
-          )}
+          {isAuthMethodsError &&
+            !isLoggedIn &&
+            (getRemoteApiUrl() ? (
+              <div className="rounded-sm border border-error/30 bg-error/10 p-base">
+                <p className="text-sm text-high">
+                  {authMethodsError instanceof Error
+                    ? authMethodsError.message
+                    : 'Failed to load available sign-in methods.'}
+                </p>
+              </div>
+            ) : (
+              // Fully-local install: there is no cloud to sign in to, so the
+              // auth-methods 400 is expected. Lead with the local path instead
+              // of an error box that buries it behind "more options".
+              <div className="rounded-sm border border-border bg-secondary p-base space-y-3">
+                <p className="text-sm font-medium text-high">
+                  This is a self-contained install — no account is needed.
+                </p>
+                <p className="text-sm text-low">
+                  Workspaces and coding agents are fully functional. Cloud
+                  sign-in, kanban boards and organizations are not part of this
+                  build.
+                </p>
+                <PrimaryButton
+                  value={
+                    saving ? 'Continuing...' : 'Continue without signing in'
+                  }
+                  onClick={() =>
+                    void finishOnboarding({ method: 'skip_sign_in' })
+                  }
+                  disabled={saving || pendingProvider !== null}
+                />
+              </div>
+            ))}
 
           {isLoggedIn ? (
             <section className="space-y-base">

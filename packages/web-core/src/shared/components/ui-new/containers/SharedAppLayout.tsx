@@ -22,6 +22,7 @@ import { AppBarUserPopoverContainer } from './AppBarUserPopoverContainer';
 import { useUserOrganizations } from '@/shared/hooks/useUserOrganizations';
 import { useOrganizationStore } from '@/shared/stores/useOrganizationStore';
 import { useAuth } from '@/shared/hooks/auth/useAuth';
+import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
 import { useDiscordOnlineCount } from '@/shared/hooks/useDiscordOnlineCount';
 import { useGitHubStars } from '@/shared/hooks/useGitHubStars';
 import { useUserSystem } from '@/shared/hooks/useUserSystem';
@@ -65,6 +66,10 @@ export function SharedAppLayout() {
     (s) => s.isLeftSidebarVisible
   );
   const { isSignedIn } = useAuth();
+  // Fully-local installs have no cloud API at all. Hide the affordances that
+  // can only dead-end there (kanban sign-in CTA, projects rail, relay pairing)
+  // rather than letting them 400 on "Remote client not configured".
+  const cloudAvailable = Boolean(getRemoteApiUrl());
   const { appVersion } = useUserSystem();
   const updateVersion = useAppUpdateStore((s) => s.updateVersion);
   const restartForUpdate = useAppUpdateStore((s) => s.restart);
@@ -338,7 +343,7 @@ export function SharedAppLayout() {
               onExportClick={handleExportClick}
               onWorkspacesClick={handleWorkspacesClick}
               onHostClick={handleHostClick}
-              onPairHostClick={handlePairHostClick}
+              onPairHostClick={cloudAvailable ? handlePairHostClick : undefined}
               onProjectClick={handleProjectClick}
               onProjectsDragEnd={handleProjectsDragEnd}
               isSavingProjectOrder={isSavingProjectOrder}
@@ -346,6 +351,7 @@ export function SharedAppLayout() {
               isExportActive={isExportActive}
               activeProjectId={activeProjectId}
               isSignedIn={isSignedIn}
+              showProjectsSection={cloudAvailable || isSignedIn}
               isLoadingProjects={isLoading}
               onSignIn={handleSignIn}
               onHoverStart={() => setIsAppBarHovered(true)}
@@ -503,7 +509,7 @@ export function SharedAppLayout() {
                     <span className="truncate">{project.name}</span>
                   </button>
                 ))
-              ) : (
+              ) : cloudAvailable ? (
                 <div className="px-4 py-6 text-center">
                   <KanbanIcon
                     className="h-8 w-8 mx-auto text-low"
@@ -528,7 +534,7 @@ export function SharedAppLayout() {
                     </button>
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* Create Project button */}

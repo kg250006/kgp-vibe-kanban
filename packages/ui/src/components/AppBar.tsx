@@ -60,6 +60,12 @@ interface AppBarProps {
   isExportActive?: boolean;
   activeProjectId: string | null;
   isSignedIn?: boolean;
+  /**
+   * Whether the cloud-backed Projects section (kanban CTA, project list) is
+   * shown at all. Self-contained installs pass false: the sign-in CTA would
+   * dead-end on "Remote client not configured".
+   */
+  showProjectsSection?: boolean;
   isLoadingProjects?: boolean;
   onSignIn?: () => void;
   onHoverStart?: () => void;
@@ -212,6 +218,7 @@ export function AppBar({
   isExportActive = false,
   activeProjectId,
   isSignedIn,
+  showProjectsSection = true,
   isLoadingProjects,
   onSignIn,
   onHoverStart,
@@ -320,7 +327,7 @@ export function AppBar({
     });
   }
 
-  if (projectSectionItems.length > 0) {
+  if (showProjectsSection && projectSectionItems.length > 0) {
     sections.push({
       key: 'projects',
       label: 'Projects',

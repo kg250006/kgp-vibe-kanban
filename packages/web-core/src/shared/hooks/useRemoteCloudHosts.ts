@@ -4,7 +4,7 @@ import type { AppBarHost, AppBarHostStatus } from '@vibe/ui/components/AppBar';
 import type { PairRelayHostRequest, RelayPairedHost } from 'shared/types';
 import type { RelayHost } from 'shared/remote-types';
 import { relayApi } from '@/shared/lib/api';
-import { listRelayHosts } from '@/shared/lib/remoteApi';
+import { getRemoteApiUrl, listRelayHosts } from '@/shared/lib/remoteApi';
 
 export type RemoteCloudHostStatus = AppBarHostStatus;
 
@@ -36,6 +36,12 @@ function normalizeRemoteCloudHostStatus(
 }
 
 async function fetchRemoteCloudHostsState(): Promise<RemoteCloudHostsState> {
+  // Fully-local installs have no relay: /api/relay-auth/client/hosts would 400
+  // ("Remote client not configured") on every poll, spamming the console.
+  if (!getRemoteApiUrl()) {
+    return { hosts: [] };
+  }
+
   let pairedHosts: RelayPairedHost[] = [];
   try {
     pairedHosts = await relayApi.listPairedRelayHosts();
