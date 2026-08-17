@@ -224,6 +224,14 @@ export const sequentialBindings: SequentialBinding[] = [
     actionId: 'toggle-dev-server',
   },
   {
+    id: 'seq-toggle-claude-remote-control',
+    keys: ['t', 'c'],
+    scopes: [Scope.WORKSPACE],
+    description: 'Claude Remote Control',
+    group: 'Toggle',
+    actionId: 'claude-remote-control',
+  },
+  {
     id: 'seq-toggle-wrap',
     keys: ['t', 'w'],
     scopes: [Scope.WORKSPACE],

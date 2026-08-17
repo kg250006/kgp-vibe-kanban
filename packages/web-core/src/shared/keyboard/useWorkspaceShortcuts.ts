@@ -74,6 +74,7 @@ export function useWorkspaceShortcuts() {
   useHotkeys('y>l', () => execute(Actions.CopyRawLogs), OPTIONS);
 
   useHotkeys('t>d', () => execute(Actions.ToggleDevServer), OPTIONS);
+  useHotkeys('t>c', () => execute(Actions.ClaudeRemoteControl), OPTIONS);
   useHotkeys('t>w', () => execute(Actions.ToggleWrapLines), OPTIONS);
 
   useHotkeys('r>s', () => execute(Actions.RunSetupScript), OPTIONS);

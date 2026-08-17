@@ -18,6 +18,7 @@ export const Pages: Record<StaticPageId, CommandBarPage> = {
           { type: 'action', action: Actions.CopyWorkspacePath },
           { type: 'action', action: Actions.CopyRawLogs },
           { type: 'action', action: Actions.ToggleDevServer },
+          { type: 'action', action: Actions.ClaudeRemoteControl },
 
           { type: 'childPages', id: 'workspaceActions' },
           { type: 'childPages', id: 'repoActions' },

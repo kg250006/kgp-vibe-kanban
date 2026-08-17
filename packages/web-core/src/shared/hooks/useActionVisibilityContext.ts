@@ -9,6 +9,7 @@ import { useDiffViewMode } from '@/shared/stores/useDiffViewStore';
 import { useDiffPaths } from '@/shared/stores/useWorkspaceDiffStore';
 import { useWorkspaceContext } from '@/shared/hooks/useWorkspaceContext';
 import { useUserSystem } from '@/shared/hooks/useUserSystem';
+import { useClaudeRemoteControl } from '@/shared/hooks/useClaudeRemoteControl';
 import { useDevServer } from '@/shared/hooks/useDevServer';
 import { useBranchStatus } from '@/shared/hooks/useBranchStatus';
 import { useShape } from '@/shared/integrations/electric/hooks';
@@ -89,6 +90,11 @@ export function useActionVisibilityContext(
   const { config } = useUserSystem();
   const { isStarting, isStopping, runningDevServers } =
     useDevServer(workspaceId);
+  // No withSessionUrl here: this hook is instantiated by NavbarContainer,
+  // CommandBarDialog and ContextBarContainer, so requesting the URL would open
+  // three log websockets. Only the dialog needs it.
+  const { state: claudeRemoteControlState } =
+    useClaudeRemoteControl(workspaceId);
   const { data: branchStatus } = useBranchStatus(workspaceId);
   const { isAttemptRunningVisible } = useExecutionProcessesContext();
   const { logsPanelContent } = useLogsPanel();
@@ -137,6 +143,7 @@ export function useActionVisibilityContext(
       isAllDiffsExpanded,
       editorType: config?.editor?.editor_type ?? null,
       devServerState,
+      claudeRemoteControlState,
       runningDevServers,
       hasGitRepos: repos.length > 0,
       hasMultipleRepos: repos.length > 1,
@@ -165,6 +172,7 @@ export function useActionVisibilityContext(
     isStarting,
     isStopping,
     runningDevServers,
+    claudeRemoteControlState,
     branchStatus,
     isAttemptRunningVisible,
     logsPanelContent,

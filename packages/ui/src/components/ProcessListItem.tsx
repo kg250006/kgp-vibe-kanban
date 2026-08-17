@@ -3,6 +3,7 @@ import {
   GearIcon,
   CodeIcon,
   GlobeIcon,
+  DeviceMobileIcon,
 } from '@phosphor-icons/react';
 import { cn } from '../lib/cn';
 import { RunningDots } from './RunningDots';
@@ -28,6 +29,10 @@ function getRunReasonLabel(runReason: string): string {
       return 'Archive Script';
     case 'devserver':
       return 'Dev Server';
+    case 'remotecontrol':
+      // Always the full three-word phrase — "Remote Control" alone collides
+      // with Vibe Kanban's own relay-based Remote Access feature.
+      return 'Claude Remote Control';
     default:
       return runReason;
   }
@@ -43,6 +48,9 @@ function getRunReasonIcon(runReason: string): typeof TerminalIcon {
       return GearIcon;
     case 'devserver':
       return GlobeIcon;
+    case 'remotecontrol':
+      // Deliberately NOT BroadcastIcon — that is the relay feature's identity.
+      return DeviceMobileIcon;
     default:
       return TerminalIcon;
   }

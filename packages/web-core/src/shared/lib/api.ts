@@ -701,6 +701,53 @@ export const workspacesApi = {
     return handleApiResponse<ExecutionProcess[]>(response);
   },
 
+  /**
+   * Start a Claude Remote Control session in this workspace's worktree.
+   * Idempotent: if one is already running the backend returns AlreadyRunning.
+   */
+  startClaudeRemoteControl: async (
+    workspaceId: string
+  ): Promise<ExecutionProcess> => {
+    const response = await makeRequest(
+      `/api/workspaces/${workspaceId}/execution/remote-control/start`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }
+    );
+    return handleApiResponse<ExecutionProcess>(response);
+  },
+
+  /**
+   * Grant Claude Code workspace trust for this workspace's worktree — the same
+   * consent as running `claude` there and accepting the prompt. Only called
+   * from the explicit "Trust this folder and start" button.
+   */
+  trustClaudeRemoteControl: async (workspaceId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/workspaces/${workspaceId}/execution/remote-control/trust`,
+      { method: 'POST' }
+    );
+    return handleApiResponse<void>(response);
+  },
+
+  /**
+   * The current Claude Remote Control process for this workspace, if any.
+   *
+   * Stopping deliberately goes through
+   * executionProcessesApi.stopExecutionProcess — the workspace-level stop
+   * endpoint intentionally leaves Remote Control running.
+   */
+  getClaudeRemoteControl: async (
+    workspaceId: string
+  ): Promise<ExecutionProcess | null> => {
+    const response = await makeRequest(
+      `/api/workspaces/${workspaceId}/execution/remote-control`
+    );
+    return handleApiResponse<ExecutionProcess | null>(response);
+  },
+
   setupGhCli: async (workspaceId: string): Promise<ExecutionProcess> => {
     const response = await makeRequest(
       `/api/workspaces/${workspaceId}/integration/github/cli/setup`,

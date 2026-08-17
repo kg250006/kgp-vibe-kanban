@@ -23,6 +23,7 @@ import {
   CaretDoubleUpIcon,
   CaretDoubleDownIcon,
   PlayIcon,
+  DeviceMobileIcon,
   PauseIcon,
   SpinnerIcon,
   GitPullRequestIcon,
@@ -69,6 +70,7 @@ import { CreatePRDialog } from '@/shared/dialogs/command-bar/CreatePRDialog';
 import { getIdeName } from '@/shared/lib/ideName';
 import { EditorSelectionDialog } from '@/shared/dialogs/command-bar/EditorSelectionDialog';
 import { StartReviewDialog } from '@/shared/dialogs/command-bar/StartReviewDialog';
+import { ClaudeRemoteControlDialog } from '@/shared/dialogs/ClaudeRemoteControlDialog';
 import posthog from 'posthog-js';
 import { WorkspacesGuideDialog } from '@/shared/dialogs/shared/WorkspacesGuideDialog';
 import { SettingsDialog } from '@/shared/dialogs/settings/SettingsDialog';
@@ -794,6 +796,46 @@ export const Actions = {
       if (!ctx.currentLogs || ctx.currentLogs.length === 0) return;
       const rawText = ctx.currentLogs.map((log) => log.content).join('\n');
       await navigator.clipboard.writeText(rawText);
+    },
+  },
+
+  ClaudeRemoteControl: {
+    id: 'claude-remote-control',
+    // Always the full three-word phrase, everywhere, including tooltips:
+    // "Remote Control" alone is Vibe Kanban's relay feature.
+    label: 'Claude Remote Control',
+    // DeviceMobileIcon, never BroadcastIcon — that is the relay's identity.
+    icon: DeviceMobileIcon,
+    shortcut: 'T C',
+    requiresTarget: ActionTargetType.NONE,
+    isVisible: (ctx) => ctx.hasWorkspace,
+    isEnabled: (ctx) =>
+      ctx.claudeRemoteControlState !== 'starting' &&
+      ctx.claudeRemoteControlState !== 'stopping',
+    getIcon: (ctx) =>
+      ctx.claudeRemoteControlState === 'starting' ||
+      ctx.claudeRemoteControlState === 'stopping'
+        ? SpinnerIcon
+        : DeviceMobileIcon,
+    getTooltip: (ctx) => {
+      switch (ctx.claudeRemoteControlState) {
+        case 'starting':
+          return 'Starting Claude Remote Control...';
+        case 'stopping':
+          return 'Stopping Claude Remote Control...';
+        case 'running':
+          return 'Claude Remote Control is live';
+        case 'unavailable':
+          return 'Claude Code is not set up on this machine';
+        default:
+          return 'Hand this workspace to Claude Remote Control';
+      }
+    },
+    getLabel: () => 'Claude Remote Control',
+    execute: (ctx) => {
+      ClaudeRemoteControlDialog.show({
+        workspaceId: ctx.currentWorkspaceId ?? undefined,
+      });
     },
   },
 
@@ -1559,6 +1601,7 @@ export const ContextBarActionGroups = {
   primary: [Actions.OpenInIDE, Actions.CopyWorkspacePath] as ActionDefinition[],
   secondary: [
     Actions.ToggleDevServer,
+    Actions.ClaudeRemoteControl,
     Actions.TogglePreviewMode,
     Actions.ToggleChangesMode,
   ] as ActionDefinition[],

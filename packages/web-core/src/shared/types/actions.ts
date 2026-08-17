@@ -37,6 +37,22 @@ export type ActionIcon = Icon | SpecialIconType;
 // Dev server state type for visibility context
 export type DevServerState = 'stopped' | 'starting' | 'running' | 'stopping';
 
+/**
+ * Claude Remote Control session state.
+ *
+ * `unavailable` means Claude Code has never run on this machine; `stopped`
+ * means a session existed and ended, which is deliberately distinct from
+ * `idle` so the user learns why their other device went dead.
+ */
+export type ClaudeRemoteControlState =
+  | 'unavailable'
+  | 'idle'
+  | 'starting'
+  | 'running'
+  | 'stopping'
+  | 'stopped'
+  | 'failed';
+
 // Project mutations interface (registered by ProjectProvider consumers)
 export interface ProjectMutations {
   removeIssue: (id: string) => void;
@@ -128,6 +144,9 @@ export interface ActionVisibilityContext {
   editorType: EditorType | null;
   devServerState: DevServerState;
   runningDevServers: ExecutionProcess[];
+
+  // Claude Remote Control state
+  claudeRemoteControlState: ClaudeRemoteControlState;
 
   // Git panel state
   hasGitRepos: boolean;

@@ -88,6 +88,21 @@ function getIconClassName(
     }
   }
 
+  // Claude Remote Control. Uses text-brand deliberately, NOT text-error —
+  // that colour is the dev server's running-state identity.
+  if (action.id === 'claude-remote-control') {
+    const { claudeRemoteControlState } = actionContext;
+    if (
+      claudeRemoteControlState === 'starting' ||
+      claudeRemoteControlState === 'stopping'
+    ) {
+      return 'animate-spin';
+    }
+    if (claudeRemoteControlState === 'running') {
+      return 'text-brand hover:text-brand group-hover:text-brand';
+    }
+  }
+
   if (isDisabled) {
     return 'opacity-40';
   }
