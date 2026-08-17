@@ -12,7 +12,7 @@
 # =============================================================================
 set -euo pipefail
 
-PORT=3000
+PORT=5262
 URL="http://localhost:${PORT}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"

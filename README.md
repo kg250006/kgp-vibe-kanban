@@ -87,6 +87,67 @@ Install dependencies:
 pnpm i
 ```
 
+#### One-click launch
+
+After setup, start the whole local app with a double-click:
+
+| OS | Launcher | Shortcut |
+|---|---|---|
+| Windows | `scripts\start-vibe-kanban.bat` | right-click → **Send to → Desktop** |
+| macOS | `scripts/start-vibe-kanban.command` | `chmod +x` once, then drag to Dock |
+
+The launcher is idempotent: if the app is already running it just opens
+`http://localhost:5262` (KANB on a phone keypad — picked to never collide with
+dev servers squatting on 3000); otherwise it starts the release server (building the
+frontend bundle and/or server binary first if they're missing) and opens the
+browser once healthy.
+
+> Release builds store data in the per-user app directory
+> (`%APPDATA%\bloop\vibe-kanban\data` on Windows, `~/Library/Application
+> Support/ai.bloop.vibe-kanban` on macOS) — separate from the `dev_assets/` DB
+> that debug builds use.
+
+#### Windows: one-command native setup
+
+Everything the build needs (rustup + pinned nightly, VS 2022 Build Tools C++
+workload + Windows SDK, LLVM/libclang, pnpm, sqlx-cli, workspace deps) installs
+idempotently via:
+
+```powershell
+.\scripts\setup-windows-dev.ps1          # installs whatever is missing
+.\scripts\setup-windows-dev.ps1 -Check   # report only
+```
+
+Then build and run natively — no Docker or WSL2 required:
+
+```powershell
+$env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
+pnpm -C packages/local-web build
+$env:PORT = 5262; cargo run --bin server    # http://localhost:5262
+```
+
+Hard-won pins the script encodes (do not "upgrade" these casually):
+
+- **sqlx-cli must be 0.8.x** to match the workspace's sqlx 0.8.6 query-cache
+  format, and **must be built with `cargo +stable`** — sqlx-cli 0.9 requires
+  rustc 1.94+, newer than the repo's pinned nightly.
+- **LLVM/libclang is mandatory**: `libsqlite3-sys` runs bindgen (the Dockerfile
+  installs `libclang-dev` for the same reason). Set `LIBCLANG_PATH` for builds.
+- **MSVC Build Tools + Windows SDK are mandatory**: Rust's default
+  `x86_64-pc-windows-msvc` target cannot link a single binary without them.
+
+##### Windows quirks
+
+- `pnpm run check` and `pnpm run lint` begin with `./scripts/*.sh`, which
+  cmd.exe cannot execute. Run those composite scripts from **Git Bash**, or run
+  each sub-step (`web-core:check`, `ui:lint`, `backend:check`, …) individually.
+- `scripts/check-unused-i18n-keys.mjs` shells out to POSIX `find` and silently
+  swallows the failure on Windows, reporting **every** key as unused. Run it
+  from Git Bash for a true result.
+- Three upstream `executors::claude::tests` cases hardcode POSIX paths
+  (`/tmp/test-worktree`) and fail on Windows path separators. Pre-existing;
+  unrelated to local changes.
+
 ### Running the dev server
 
 ```bash
@@ -109,6 +170,24 @@ pnpm run build
 1. Run `./local-build.sh`
 2. Test with `cd npx-cli && node bin/cli.js`
 
+## Two install modes
+
+This fork builds two incompatible ways. Which one a given checkout is for is recorded in the git-ignored `.kgp-install-mode` file at the repo root, written by `docker/kgp-local/setup.ps1` / `setup.sh`.
+
+| | Mode A — cloud-connected | Mode B — self-contained |
+|---|---|---|
+| Built by | `.github/workflows/kgp-local-cli.yml` | `docker/kgp-local/` |
+| `VK_SHARED_API_BASE` | baked at build time | never set |
+| Cloud features | on | `remote features disabled` |
+| VK Remote Access (relay) | available | unavailable |
+| Claude Remote Control | available | available |
+
+Three things to know before changing modes:
+
+- **Runtime beats build time, but only one way.** `crates/local-deployment/src/lib.rs:171-176` reads `std::env::var(...).ok().or_else(|| option_env!(...))`. A local-baked binary *can* be pointed at a cloud at runtime, but a cloud-baked binary **cannot be forced local by unsetting** the variable — it falls through to the baked value. Rebuild instead.
+- **Empty string is a trap.** `VK_SHARED_API_BASE=` yields `Ok("")`, which passes the `Some(url)` branch at `crates/local-deployment/src/lib.rs:189` and attempts `RemoteClient::new("")`. There is no `is_empty()` guard, even though `crates/remote/AGENTS.md:174` warns about exactly this. Omit the variable; never set it empty.
+- **The frontend is sticky to its build.** `packages/web-core/src/shared/lib/remoteApi.ts:30` is `_remoteApiBase = base || BUILD_TIME_API_BASE`, so a `null` from the server cannot clear a baked-in base. Changing modes requires a frontend rebuild, not just a backend env change.
+
 ### Environment Variables
 
 The following environment variables can be configured at build time or runtime:
@@ -125,8 +204,8 @@ The following environment variables can be configured at build time or runtime:
 | `MCP_PORT` | Runtime | Value of `BACKEND_PORT` | MCP server connection port |
 | `DISABLE_WORKTREE_CLEANUP` | Runtime | Not set | Disable all git worktree cleanup including orphan and expired workspace cleanup (for debugging) |
 | `VK_ALLOWED_ORIGINS` | Runtime | Not set | Comma-separated list of origins that are allowed to make backend API requests (e.g., `https://my-vibekanban-frontend.com`) |
-| `VK_SHARED_API_BASE` | Runtime | Not set | Base URL for the remote/cloud API used by the local desktop app |
-| `VK_SHARED_RELAY_API_BASE` | Runtime | Not set | Base URL for the relay API used by tunnel-mode connections |
+| `VK_SHARED_API_BASE` | Build-time + Runtime | Not set | Base URL for the remote/cloud API used by the local desktop app. Read at runtime, falling back to a value baked in at build time via `option_env!` — see [Two install modes](#two-install-modes) |
+| `VK_SHARED_RELAY_API_BASE` | Build-time + Runtime | Not set | Base URL for the relay API used by tunnel-mode connections. Same build-time/runtime resolution as above |
 | `VK_TUNNEL` | Runtime | Not set | Enable relay tunnel mode when set (requires relay API base URL) |
 
 **Build-time variables** must be set when running `pnpm run build`. **Runtime variables** are read when the application starts.

@@ -16,6 +16,15 @@
 - [`docs/AGENTS.md`](docs/AGENTS.md) — Mintlify documentation writing guidelines and component reference.
 - [`packages/local-web/AGENTS.md`](packages/local-web/AGENTS.md) — Web app design system styling guidelines.
 
+## Install mode — read before building or running
+- This fork builds two incompatible ways. Check `.kgp-install-mode` at the repo root first.
+- **File absent**: ask the user which mode. Do not build, start the app, or change build config on a guess.
+- `MODE=LOCAL`: self-contained. Never set `VK_SHARED_API_BASE`, `VK_SHARED_RELAY_API_BASE`, `VK_TUNNEL`, `VITE_VK_SHARED_API_BASE`, or `VITE_RELAY_API_BASE_URL`. Build and run via `docker/kgp-local/`.
+- `MODE=CLOUD`: cloud-connected. Those vars are baked at build time by `.github/workflows/kgp-local-cli.yml`. Do not strip them.
+- Never set any of those vars to an empty string — `std::env::var` returns `Ok("")`, which is treated as a configured URL (`crates/local-deployment/src/lib.rs:171`). Omit them instead.
+- A CLOUD-baked binary cannot be downgraded to LOCAL by unsetting the vars; the baked `option_env!` value wins. Rebuild instead.
+- The marker is git-ignored and machine-specific, written by `docker/kgp-local/setup.ps1` / `setup.sh`.
+
 ## Managing Shared Types Between Rust and TypeScript
 
 ts-rs allows you to derive TypeScript types from Rust structs/enums. By annotating your Rust types with #[derive(TS)] and related macros, ts-rs will generate .ts declaration files for those types.
@@ -27,6 +36,8 @@ Do not manually edit shared/remote-types.ts, instead edit crates/remote/src/bin/
 
 ## Build, Test, and Development Commands
 - Install: `pnpm i`
+- Windows toolchain bootstrap (rustup, MSVC Build Tools, LLVM/libclang, pnpm, sqlx-cli 0.8.6): `.\scripts\setup-windows-dev.ps1` — idempotent; see README "Windows: one-command native setup" for the version-pin rationale.
+- Windows: run `pnpm run check` / `pnpm run lint` from Git Bash (they invoke `./scripts/*.sh`), and set `LIBCLANG_PATH=C:\Program Files\LLVM\bin` for cargo builds.
 - Run dev (web app + backend with ports auto-assigned): `pnpm run dev`
 - Backend (watch): `pnpm run backend:dev:watch`
 - Web app (dev): `pnpm run local-web:dev`
