@@ -105,9 +105,7 @@ pub async fn delete_workspace(
     let workspace_manager = deployment.workspace_manager();
     let workspace_id = workspace.id;
 
-    if ExecutionProcess::has_running_non_dev_server_processes_for_workspace(pool, workspace_id)
-        .await?
-    {
+    if ExecutionProcess::has_running_blocking_processes_for_workspace(pool, workspace_id).await? {
         return Err(ApiError::Conflict(
             "Cannot delete workspace while processes are running. Stop all processes first."
                 .to_string(),
@@ -132,6 +130,32 @@ pub async fn delete_workspace(
             tracing::error!(
                 "Failed to stop dev server {} for workspace {}: {}",
                 dev_server.id,
+                workspace_id,
+                e
+            );
+        }
+    }
+
+    // Stop Claude Remote Control sessions before the worktree is removed, so a
+    // session someone is driving remotely is never yanked out from under them.
+    let remote_controls =
+        ExecutionProcess::find_running_remote_control_by_workspace(pool, workspace_id).await?;
+
+    for remote_control in remote_controls {
+        tracing::info!(
+            "Stopping Claude Remote Control {} before deleting workspace {}",
+            remote_control.id,
+            workspace_id
+        );
+
+        if let Err(e) = deployment
+            .container()
+            .stop_execution(&remote_control, ExecutionProcessStatus::Killed)
+            .await
+        {
+            tracing::error!(
+                "Failed to stop remote control {} for workspace {}: {}",
+                remote_control.id,
                 workspace_id,
                 e
             );

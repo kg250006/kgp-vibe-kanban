@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE execution_processes\n               SET remote_control_url = $1\n               WHERE id = $2 AND remote_control_url IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "6c4a14ab2d04c29c1904d0307787eba0de4da541b4c36dd2929ee15fb14fd01a"
+}

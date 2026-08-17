@@ -12,6 +12,7 @@ use db::{
         execution_process_logs::ExecutionProcessLogs,
     },
 };
+use executors::actions::claude_remote_control::{extract_environment_url, extract_session_url};
 use futures::{StreamExt, TryStreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::SqlitePool;
@@ -251,6 +252,108 @@ pub async fn append_log_message(session_id: Uuid, execution_id: Uuid, msg: &LogM
         .await
         .with_context(|| format!("append log message for execution {}", execution_id))?;
     Ok(())
+}
+
+/// Watch a `claude remote-control` process's output for its claude.ai session
+/// URL and record it on the execution process row.
+///
+/// One-shot: the task returns as soon as the URL is found, so a session that
+/// stays up for days costs nothing after the first few seconds.
+///
+/// Writing to the row is what delivers the URL to clients — the UPDATE fires
+/// SQLite's update hook, which emits an `execution_process_patch` carrying the
+/// whole refreshed row over the existing execution-process stream. No extra
+/// endpoint or websocket is involved.
+pub fn spawn_capture_remote_control_url(
+    store: Arc<MsgStore>,
+    db: DBService,
+    execution_id: Uuid,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        // history_plus_stream (not stdout_chunked_stream) so a slow task start
+        // cannot miss the banner, and so stderr is covered too — the CLI may
+        // print the URL on either stream.
+        let mut stream = store.history_plus_stream();
+        let mut buf = String::new();
+
+        // Verified against 2.1.233: the CLI prints the plain-text ENVIRONMENT
+        // link first, then — once the pre-created session attaches, normally
+        // within a couple of seconds — the per-session link. The session link
+        // opens straight into the session, so prefer it; hold the environment
+        // link as a fallback and use it only if no session link shows up in
+        // time (e.g. someone overrode --no-create-session-in-dir).
+        let mut environment_url: Option<String> = None;
+        const SESSION_URL_GRACE: std::time::Duration = std::time::Duration::from_secs(15);
+
+        let write_url = |url: String| {
+            let pool = db.pool.clone();
+            async move {
+                if let Err(e) =
+                    ExecutionProcess::set_remote_control_url(&pool, execution_id, &url).await
+                {
+                    tracing::error!(
+                        "Failed to record remote control URL for execution {}: {}",
+                        execution_id,
+                        e
+                    );
+                } else {
+                    tracing::info!(
+                        "Captured Claude Remote Control URL for execution {}",
+                        execution_id
+                    );
+                }
+            }
+        };
+
+        loop {
+            // Once the environment link is in hand, keep waiting only briefly
+            // for the better per-session link before settling.
+            let next = if environment_url.is_some() {
+                match tokio::time::timeout(SESSION_URL_GRACE, stream.next()).await {
+                    Ok(next) => next,
+                    Err(_elapsed) => break, // grace expired -> fall back below
+                }
+            } else {
+                stream.next().await
+            };
+
+            let Some(Ok(msg)) = next else { break };
+            match msg {
+                LogMsg::Stdout(s) | LogMsg::Stderr(s) => buf.push_str(&s),
+                LogMsg::Finished => break,
+                _ => continue,
+            }
+
+            if let Some(url) = extract_session_url(&buf) {
+                write_url(url).await;
+                return;
+            }
+            if environment_url.is_none() {
+                environment_url = extract_environment_url(&buf);
+            }
+
+            // Cap the buffer, retaining the tail, so a long-lived process cannot
+            // grow it without bound. The retained tail is far longer than any
+            // session URL, so a URL split across the cap boundary still matches.
+            if buf.len() > 8192 {
+                buf = buf.split_off(buf.len() - 4096);
+            }
+        }
+
+        if let Some(url) = environment_url {
+            tracing::info!(
+                "No per-session URL within grace period for execution {}; using environment URL",
+                execution_id
+            );
+            write_url(url).await;
+            return;
+        }
+
+        tracing::warn!(
+            "Claude Remote Control output stream ended for execution {} with no session URL",
+            execution_id
+        );
+    })
 }
 
 pub fn spawn_stream_raw_logs_to_storage(

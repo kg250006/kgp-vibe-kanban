@@ -7,6 +7,7 @@ use ts_rs::TS;
 
 use crate::{
     actions::{
+        claude_remote_control::ClaudeRemoteControlRequest,
         coding_agent_follow_up::CodingAgentFollowUpRequest,
         coding_agent_initial::CodingAgentInitialRequest, review::ReviewRequest,
         script::ScriptRequest,
@@ -15,6 +16,7 @@ use crate::{
     env::ExecutionEnv,
     executors::{BaseCodingAgent, ExecutorError, SpawnedChild},
 };
+pub mod claude_remote_control;
 pub mod coding_agent_follow_up;
 pub mod coding_agent_initial;
 pub mod review;
@@ -30,6 +32,7 @@ pub enum ExecutorActionType {
     CodingAgentFollowUpRequest,
     ScriptRequest,
     ReviewRequest,
+    ClaudeRemoteControlRequest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -67,6 +70,10 @@ impl ExecutorAction {
             }
             ExecutorActionType::ReviewRequest(request) => Some(request.base_executor()),
             ExecutorActionType::ScriptRequest(_) => None,
+            // Must stay None. Returning Some(ClaudeCode) would wire up
+            // ExecutorApprovalBridge, but remote control speaks no control
+            // protocol and has nothing to approve.
+            ExecutorActionType::ClaudeRemoteControlRequest(_) => None,
         }
     }
 }

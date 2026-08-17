@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n                    ep.id as \"id!: Uuid\",\n                    ep.session_id as \"session_id!: Uuid\",\n                    ep.run_reason as \"run_reason!: ExecutionProcessRunReason\",\n                    ep.executor_action as \"executor_action!: sqlx::types::Json<ExecutorActionField>\",\n                    ep.status as \"status!: ExecutionProcessStatus\",\n                    ep.exit_code,\n                    ep.dropped as \"dropped!: bool\",\n                    ep.started_at as \"started_at!: DateTime<Utc>\",\n                    ep.completed_at as \"completed_at?: DateTime<Utc>\",\n                    ep.created_at as \"created_at!: DateTime<Utc>\",\n                    ep.updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM execution_processes ep\n               JOIN sessions s ON ep.session_id = s.id\n               WHERE s.workspace_id = ? AND ep.run_reason = ? AND ep.dropped = FALSE\n               ORDER BY ep.created_at DESC LIMIT 1",
+  "query": "\n        SELECT\n            ep.id as \"id!: Uuid\",\n            ep.session_id as \"session_id!: Uuid\",\n            ep.run_reason as \"run_reason!: ExecutionProcessRunReason\",\n            ep.executor_action as \"executor_action!: sqlx::types::Json<ExecutorActionField>\",\n            ep.status as \"status!: ExecutionProcessStatus\",\n            ep.exit_code,\n            ep.remote_control_url,\n            ep.dropped as \"dropped!: bool\",\n            ep.started_at as \"started_at!: DateTime<Utc>\",\n            ep.completed_at as \"completed_at?: DateTime<Utc>\",\n            ep.created_at as \"created_at!: DateTime<Utc>\",\n            ep.updated_at as \"updated_at!: DateTime<Utc>\"\n        FROM execution_processes ep\n        JOIN sessions s ON ep.session_id = s.id\n        WHERE s.workspace_id = ?\n          AND ep.status = 'running'\n          AND ep.run_reason = 'devserver'\n        ORDER BY ep.created_at DESC\n        ",
   "describe": {
     "columns": [
       {
@@ -34,33 +34,38 @@
         "type_info": "Integer"
       },
       {
-        "name": "dropped!: bool",
+        "name": "remote_control_url",
         "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "dropped!: bool",
+        "ordinal": 7,
         "type_info": "Integer"
       },
       {
         "name": "started_at!: DateTime<Utc>",
-        "ordinal": 7,
-        "type_info": "Text"
-      },
-      {
-        "name": "completed_at?: DateTime<Utc>",
         "ordinal": 8,
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
+        "name": "completed_at?: DateTime<Utc>",
         "ordinal": 9,
         "type_info": "Text"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
+        "name": "created_at!: DateTime<Utc>",
         "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 11,
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       true,
@@ -69,6 +74,7 @@
       false,
       false,
       true,
+      true,
       false,
       false,
       true,
@@ -76,5 +82,5 @@
       false
     ]
   },
-  "hash": "0c7b20643f119afd3e233105b0fa2920e8e940bdad86cdc95d01e485a20d6ed4"
+  "hash": "f1e46543e5fbf11a1f0b9065dde7b1cf888d69785926baa257ef90b19bd0bbfc"
 }

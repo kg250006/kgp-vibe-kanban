@@ -198,14 +198,16 @@ pub trait ContainerService {
 
     /// A context is finalized when
     /// - Always when the execution process has failed or been killed
-    /// - Never when the run reason is DevServer
+    /// - Never when the run reason is DevServer or RemoteControl
     /// - Never when a setup script has no next_action (parallel mode)
     /// - The next action is None (no follow-up actions)
     fn should_finalize(&self, ctx: &ExecutionContext) -> bool {
-        // Never finalize DevServer processes
+        // Never finalize long-running, user-toggled processes. Without this,
+        // stopping a Remote Control session would mark the workspace complete
+        // and fire a "Workspace Complete" notification.
         if matches!(
             ctx.execution_process.run_reason,
-            ExecutionProcessRunReason::DevServer
+            ExecutionProcessRunReason::DevServer | ExecutionProcessRunReason::RemoteControl
         ) {
             return false;
         }
@@ -484,7 +486,7 @@ pub trait ContainerService {
         let workspace = Workspace::find_by_id(pool, workspace_id)
             .await?
             .ok_or(ContainerError::Other(anyhow!("Workspace not found")))?;
-        if ExecutionProcess::has_running_non_dev_server_processes_for_workspace(pool, workspace.id)
+        if ExecutionProcess::has_running_blocking_processes_for_workspace(pool, workspace.id)
             .await
             .unwrap_or(true)
         {
@@ -523,7 +525,8 @@ pub trait ContainerService {
         Ok(())
     }
 
-    /// Archive a workspace: set archived flag, stop running dev servers, and run archive script.
+    /// Archive a workspace: set archived flag, stop running long-lived processes
+    /// (dev servers and Claude Remote Control), and run the archive script.
     async fn archive_workspace(&self, workspace_id: Uuid) -> Result<(), ContainerError> {
         let pool = &self.db().pool;
 
@@ -541,6 +544,26 @@ pub trait ContainerService {
                     tracing::error!(
                         "Failed to stop dev server {} for workspace {}: {}",
                         dev_server.id,
+                        workspace_id,
+                        e
+                    );
+                }
+            }
+        }
+
+        // Stop running Claude Remote Control sessions. The worktree must not be
+        // archived out from under a session someone is driving remotely.
+        if let Ok(remote_controls) =
+            ExecutionProcess::find_running_remote_control_by_workspace(pool, workspace_id).await
+        {
+            for remote_control in remote_controls {
+                if let Err(e) = self
+                    .stop_execution(&remote_control, ExecutionProcessStatus::Killed)
+                    .await
+                {
+                    tracing::error!(
+                        "Failed to stop remote control {} for workspace {}: {}",
+                        remote_control.id,
                         workspace_id,
                         e
                     );
@@ -704,7 +727,14 @@ pub trait ContainerService {
         Ok(())
     }
 
-    async fn try_stop(&self, workspace: &Workspace, include_dev_server: bool) {
+    /// Stop this workspace's execution processes.
+    ///
+    /// `include_long_running` controls whether user-toggled, long-lived
+    /// processes (dev server, Claude Remote Control) are stopped too. It must
+    /// stay `false` for "stop the agent" actions: pressing Stop in the chat
+    /// must not tear down a Remote Control session the user is driving from
+    /// their phone. It is `true` only when the workspace itself is going away.
+    async fn try_stop(&self, workspace: &Workspace, include_long_running: bool) {
         // stop execution processes for this workspace's sessions
         let sessions = match Session::find_by_workspace_id(&self.db().pool, workspace.id).await {
             Ok(s) => s,
@@ -716,9 +746,13 @@ pub trait ContainerService {
                 ExecutionProcess::find_by_session_id(&self.db().pool, session.id, false).await
             {
                 for process in processes {
-                    // Skip dev server processes unless explicitly included
-                    if !include_dev_server
-                        && process.run_reason == ExecutionProcessRunReason::DevServer
+                    // Skip long-running, user-toggled processes unless explicitly included
+                    if !include_long_running
+                        && matches!(
+                            process.run_reason,
+                            ExecutionProcessRunReason::DevServer
+                                | ExecutionProcessRunReason::RemoteControl
+                        )
                     {
                         continue;
                     }
@@ -1202,6 +1236,8 @@ pub trait ContainerService {
                 Some(review_request.prompt.clone())
             }
             ExecutorActionType::ScriptRequest(_) => None,
+            // Remote control has no prompt, so it creates no conversation turn.
+            ExecutorActionType::ClaudeRemoteControlRequest(_) => None,
         } {
             let create_coding_agent_turn = CreateCodingAgentTurn {
                 execution_process_id: execution_process.id,
@@ -1352,6 +1388,27 @@ pub trait ContainerService {
             execution_process.id,
             session.id,
         );
+
+        // Claude Remote Control prints its claude.ai session URL to the child's
+        // output. Tap it once so the URL lands on the row and reaches clients
+        // through the existing execution-process event stream.
+        if matches!(
+            executor_action.typ(),
+            ExecutorActionType::ClaudeRemoteControlRequest(_)
+        ) {
+            let store = {
+                let stores = self.msg_stores().read().await;
+                stores.get(&execution_process.id).cloned()
+            };
+            if let Some(store) = store {
+                execution_process::spawn_capture_remote_control_url(
+                    store,
+                    self.db().clone(),
+                    execution_process.id,
+                );
+            }
+        }
+
         Ok(execution_process)
     }
 
@@ -1372,9 +1429,16 @@ pub trait ContainerService {
             (
                 ExecutorActionType::CodingAgentInitialRequest(_)
                 | ExecutorActionType::CodingAgentFollowUpRequest(_)
-                | ExecutorActionType::ReviewRequest(_),
+                | ExecutorActionType::ReviewRequest(_)
+                | ExecutorActionType::ClaudeRemoteControlRequest(_),
                 ExecutorActionType::ScriptRequest(_),
             ) => ExecutionProcessRunReason::CleanupScript,
+            // Remote control is always constructed with next_action: None, so
+            // this arm is defensive. It exists because the match is deliberately
+            // kept exhaustive — that is what will catch the next variant added.
+            (_, ExecutorActionType::ClaudeRemoteControlRequest(_)) => {
+                ExecutionProcessRunReason::RemoteControl
+            }
             (
                 _,
                 ExecutorActionType::CodingAgentFollowUpRequest(_)

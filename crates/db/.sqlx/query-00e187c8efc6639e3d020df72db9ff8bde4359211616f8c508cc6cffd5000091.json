@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n                    ep.id as \"id!: Uuid\",\n                    ep.session_id as \"session_id!: Uuid\",\n                    ep.run_reason as \"run_reason!: ExecutionProcessRunReason\",\n                    ep.executor_action as \"executor_action!: sqlx::types::Json<ExecutorActionField>\",\n                    ep.status as \"status!: ExecutionProcessStatus\",\n                    ep.exit_code,\n                    ep.dropped as \"dropped!: bool\",\n                    ep.started_at as \"started_at!: DateTime<Utc>\",\n                    ep.completed_at as \"completed_at?: DateTime<Utc>\",\n                    ep.created_at as \"created_at!: DateTime<Utc>\",\n                    ep.updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM execution_processes ep WHERE ep.rowid = ?",
+  "query": "SELECT\n                    ep.id as \"id!: Uuid\",\n                    ep.session_id as \"session_id!: Uuid\",\n                    ep.run_reason as \"run_reason!: ExecutionProcessRunReason\",\n                    ep.executor_action as \"executor_action!: sqlx::types::Json<ExecutorActionField>\",\n                    ep.status as \"status!: ExecutionProcessStatus\",\n                    ep.exit_code,\n                    ep.remote_control_url,\n                    ep.dropped as \"dropped!: bool\",\n                    ep.started_at as \"started_at!: DateTime<Utc>\",\n                    ep.completed_at as \"completed_at?: DateTime<Utc>\",\n                    ep.created_at as \"created_at!: DateTime<Utc>\",\n                    ep.updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM execution_processes ep WHERE ep.status = 'running' ORDER BY ep.created_at ASC",
   "describe": {
     "columns": [
       {
@@ -34,33 +34,38 @@
         "type_info": "Integer"
       },
       {
-        "name": "dropped!: bool",
+        "name": "remote_control_url",
         "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "dropped!: bool",
+        "ordinal": 7,
         "type_info": "Integer"
       },
       {
         "name": "started_at!: DateTime<Utc>",
-        "ordinal": 7,
-        "type_info": "Text"
-      },
-      {
-        "name": "completed_at?: DateTime<Utc>",
         "ordinal": 8,
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
+        "name": "completed_at?: DateTime<Utc>",
         "ordinal": 9,
         "type_info": "Text"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
+        "name": "created_at!: DateTime<Utc>",
         "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 11,
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       true,
@@ -69,6 +74,7 @@
       false,
       false,
       true,
+      true,
       false,
       false,
       true,
@@ -76,5 +82,5 @@
       false
     ]
   },
-  "hash": "7d12bf106e68365fc1aa239b8b39065430f30ad658d0bf9801c81e3ced2127da"
+  "hash": "00e187c8efc6639e3d020df72db9ff8bde4359211616f8c508cc6cffd5000091"
 }

@@ -476,6 +476,11 @@ impl Workspace {
                 ExecutorActionType::ScriptRequest(_) => {
                     current = action.next_action();
                 }
+                // Remote control carries a session name, not a prompt, so it
+                // must never contribute to workspace auto-naming.
+                ExecutorActionType::ClaudeRemoteControlRequest(_) => {
+                    current = action.next_action();
+                }
             }
         }
         None

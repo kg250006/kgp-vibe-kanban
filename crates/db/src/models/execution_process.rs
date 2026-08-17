@@ -56,6 +56,10 @@ pub enum ExecutionProcessRunReason {
     ArchiveScript,
     CodingAgent,
     DevServer,
+    /// Anthropic's native `claude remote-control` server. Long-lived, like
+    /// DevServer: it must not block other work and must not be stopped by the
+    /// workspace-level "stop the agent" action.
+    RemoteControl,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
@@ -67,6 +71,14 @@ pub struct ExecutionProcess {
     pub executor_action: sqlx::types::Json<ExecutorActionField>,
     pub status: ExecutionProcessStatus,
     pub exit_code: Option<i64>,
+    /// Session URL printed by `claude remote-control`
+    /// (`https://claude.ai/code/<id>`). Only ever set when
+    /// `run_reason = RemoteControl`.
+    ///
+    /// Treat as LIVE only while `status == Running`: a killed row keeps its URL
+    /// for history, but the session behind it is offline.
+    #[serde(default)]
+    pub remote_control_url: Option<String>,
     /// dropped: true if this process is excluded from the current
     /// history view (due to restore/trimming). Hidden from logs/timeline;
     /// still listed in the Processes tab.
@@ -132,6 +144,7 @@ impl ExecutionProcess {
                     ep.executor_action as "executor_action!: sqlx::types::Json<ExecutorActionField>",
                     ep.status as "status!: ExecutionProcessStatus",
                     ep.exit_code,
+                    ep.remote_control_url,
                     ep.dropped as "dropped!: bool",
                     ep.started_at as "started_at!: DateTime<Utc>",
                     ep.completed_at as "completed_at?: DateTime<Utc>",
@@ -206,6 +219,7 @@ impl ExecutionProcess {
                     ep.executor_action as "executor_action!: sqlx::types::Json<ExecutorActionField>",
                     ep.status as "status!: ExecutionProcessStatus",
                     ep.exit_code,
+                    ep.remote_control_url,
                     ep.dropped as "dropped!: bool",
                     ep.started_at as "started_at!: DateTime<Utc>",
                     ep.completed_at as "completed_at?: DateTime<Utc>",
@@ -233,6 +247,7 @@ impl ExecutionProcess {
                       ep.executor_action as "executor_action!: sqlx::types::Json<ExecutorActionField>",
                       ep.status          as "status!: ExecutionProcessStatus",
                       ep.exit_code,
+                      ep.remote_control_url,
                       ep.dropped as "dropped!: bool",
                       ep.started_at      as "started_at!: DateTime<Utc>",
                       ep.completed_at    as "completed_at?: DateTime<Utc>",
@@ -260,6 +275,7 @@ impl ExecutionProcess {
                     ep.executor_action as "executor_action!: sqlx::types::Json<ExecutorActionField>",
                     ep.status as "status!: ExecutionProcessStatus",
                     ep.exit_code,
+                    ep.remote_control_url,
                     ep.dropped as "dropped!: bool",
                     ep.started_at as "started_at!: DateTime<Utc>",
                     ep.completed_at as "completed_at?: DateTime<Utc>",
@@ -289,8 +305,14 @@ impl ExecutionProcess {
         Ok(count > 0)
     }
 
-    /// Check if there are running processes (excluding dev servers) for a workspace (across all sessions)
-    pub async fn has_running_non_dev_server_processes_for_workspace(
+    /// Check if there are running *blocking* processes for a workspace (across
+    /// all sessions).
+    ///
+    /// Long-running, user-toggled processes are excluded: a dev server or a
+    /// Claude Remote Control session can stay up for hours by design, and
+    /// treating either as "busy" would permanently block setup scripts,
+    /// reviews, cleanup, archive and delete.
+    pub async fn has_running_blocking_processes_for_workspace(
         pool: &SqlitePool,
         workspace_id: Uuid,
     ) -> Result<bool, sqlx::Error> {
@@ -300,7 +322,7 @@ impl ExecutionProcess {
                JOIN sessions s ON ep.session_id = s.id
                WHERE s.workspace_id = $1
                  AND ep.status = 'running'
-                 AND ep.run_reason != 'devserver'"#,
+                 AND ep.run_reason NOT IN ('devserver', 'remotecontrol')"#,
             workspace_id
         )
         .fetch_one(pool)
@@ -323,6 +345,7 @@ impl ExecutionProcess {
             ep.executor_action as "executor_action!: sqlx::types::Json<ExecutorActionField>",
             ep.status as "status!: ExecutionProcessStatus",
             ep.exit_code,
+            ep.remote_control_url,
             ep.dropped as "dropped!: bool",
             ep.started_at as "started_at!: DateTime<Utc>",
             ep.completed_at as "completed_at?: DateTime<Utc>",
@@ -341,6 +364,102 @@ impl ExecutionProcess {
         .await
     }
 
+    /// Find running Claude Remote Control processes for a workspace (across all
+    /// sessions). Mirrors `find_running_dev_servers_by_workspace`.
+    pub async fn find_running_remote_control_by_workspace(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            ExecutionProcess,
+            r#"
+        SELECT
+            ep.id as "id!: Uuid",
+            ep.session_id as "session_id!: Uuid",
+            ep.run_reason as "run_reason!: ExecutionProcessRunReason",
+            ep.executor_action as "executor_action!: sqlx::types::Json<ExecutorActionField>",
+            ep.status as "status!: ExecutionProcessStatus",
+            ep.exit_code,
+            ep.remote_control_url,
+            ep.dropped as "dropped!: bool",
+            ep.started_at as "started_at!: DateTime<Utc>",
+            ep.completed_at as "completed_at?: DateTime<Utc>",
+            ep.created_at as "created_at!: DateTime<Utc>",
+            ep.updated_at as "updated_at!: DateTime<Utc>"
+        FROM execution_processes ep
+        JOIN sessions s ON ep.session_id = s.id
+        WHERE s.workspace_id = ?
+          AND ep.status = 'running'
+          AND ep.run_reason = 'remotecontrol'
+        ORDER BY ep.created_at DESC
+        "#,
+            workspace_id
+        )
+        .fetch_all(pool)
+        .await
+    }
+
+    /// Newest Claude Remote Control process for a workspace in ANY state.
+    ///
+    /// The execution-process websocket is scoped to the UI's selected session,
+    /// but a remote-control start on a fresh workspace creates a NEW session —
+    /// so a fast failure (e.g. workspace trust) would be invisible to the
+    /// dialog without a session-independent read path.
+    pub async fn find_latest_remote_control_by_workspace(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            ExecutionProcess,
+            r#"
+        SELECT
+            ep.id as "id!: Uuid",
+            ep.session_id as "session_id!: Uuid",
+            ep.run_reason as "run_reason!: ExecutionProcessRunReason",
+            ep.executor_action as "executor_action!: sqlx::types::Json<ExecutorActionField>",
+            ep.status as "status!: ExecutionProcessStatus",
+            ep.exit_code,
+            ep.remote_control_url,
+            ep.dropped as "dropped!: bool",
+            ep.started_at as "started_at!: DateTime<Utc>",
+            ep.completed_at as "completed_at?: DateTime<Utc>",
+            ep.created_at as "created_at!: DateTime<Utc>",
+            ep.updated_at as "updated_at!: DateTime<Utc>"
+        FROM execution_processes ep
+        JOIN sessions s ON ep.session_id = s.id
+        WHERE s.workspace_id = ?
+          AND ep.run_reason = 'remotecontrol'
+        ORDER BY ep.created_at DESC
+        LIMIT 1
+        "#,
+            workspace_id
+        )
+        .fetch_optional(pool)
+        .await
+    }
+
+    /// Record the claude.ai session URL for a Remote Control process.
+    ///
+    /// First write wins. The `IS NULL` guard makes this idempotent and stops a
+    /// re-printed URL from repeatedly firing SQLite's update hook, which drives
+    /// the execution-process event stream.
+    pub async fn set_remote_control_url(
+        pool: &SqlitePool,
+        id: Uuid,
+        url: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE execution_processes
+               SET remote_control_url = $1
+               WHERE id = $2 AND remote_control_url IS NULL"#,
+            url,
+            id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     /// Find latest execution process by session and run reason
     /// Find latest execution process by workspace and run reason (across all sessions)
     pub async fn find_latest_by_workspace_and_run_reason(
@@ -357,6 +476,7 @@ impl ExecutionProcess {
                     ep.executor_action as "executor_action!: sqlx::types::Json<ExecutorActionField>",
                     ep.status as "status!: ExecutionProcessStatus",
                     ep.exit_code,
+                    ep.remote_control_url,
                     ep.dropped as "dropped!: bool",
                     ep.started_at as "started_at!: DateTime<Utc>",
                     ep.completed_at as "completed_at?: DateTime<Utc>",
@@ -569,6 +689,7 @@ impl ExecutionProcess {
                     ep.executor_action as "executor_action!: sqlx::types::Json<ExecutorActionField>",
                     ep.status as "status!: ExecutionProcessStatus",
                     ep.exit_code,
+                    ep.remote_control_url,
                     ep.dropped as "dropped!: bool",
                     ep.started_at as "started_at!: DateTime<Utc>",
                     ep.completed_at as "completed_at?: DateTime<Utc>",

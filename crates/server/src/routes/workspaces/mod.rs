@@ -9,6 +9,7 @@ pub mod git;
 pub mod integration;
 pub mod links;
 pub mod pr;
+pub mod remote_control_support;
 pub mod repos;
 pub mod streams;
 pub mod workspace_summary;

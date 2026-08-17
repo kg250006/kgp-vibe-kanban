@@ -160,6 +160,15 @@ export type Session = { id: string, workspace_id: string, name: string | null, e
 
 export type ExecutionProcess = { id: string, session_id: string, run_reason: ExecutionProcessRunReason, executor_action: ExecutorAction, status: ExecutionProcessStatus, exit_code: bigint | null, 
 /**
+ * Session URL printed by `claude remote-control`
+ * (`https://claude.ai/code/<id>`). Only ever set when
+ * `run_reason = RemoteControl`.
+ *
+ * Treat as LIVE only while `status == Running`: a killed row keeps its URL
+ * for history, but the session behind it is offline.
+ */
+remote_control_url: string | null, 
+/**
  * dropped: true if this process is excluded from the current
  * history view (due to restore/trimming). Hidden from logs/timeline;
  * still listed in the Processes tab.
@@ -168,7 +177,7 @@ dropped: boolean, started_at: string, completed_at: string | null, created_at: s
 
 export enum ExecutionProcessStatus { running = "running", completed = "completed", failed = "failed", killed = "killed" }
 
-export type ExecutionProcessRunReason = "setupscript" | "cleanupscript" | "archivescript" | "codingagent" | "devserver";
+export type ExecutionProcessRunReason = "setupscript" | "cleanupscript" | "archivescript" | "codingagent" | "devserver" | "remotecontrol";
 
 export type ExecutionProcessRepoState = { id: string, execution_process_id: string, repo_id: string, before_head_commit: string | null, after_head_commit: string | null, merge_commit: string | null, created_at: Date, updated_at: Date, };
 
@@ -382,6 +391,15 @@ export type PrError = { "type": "cli_not_installed", provider: ProviderKind, } |
 
 export type RunScriptError = { "type": "no_script_configured" } | { "type": "process_already_running" };
 
+export type RemoteControlError = { "type": "already_running", execution_process_id: string, } | { "type": "no_worktree" };
+
+export type StartRemoteControlRequest = { 
+/**
+ * Session name shown in the list on claude.ai/code.
+ * Defaults to the workspace name, then the branch.
+ */
+name: string | null, permission_mode: ClaudeRemoteControlPermissionMode | null, working_dir: string | null, capacity: number | null, continue_existing: boolean, };
+
 export type AssociateWorkspaceAttachmentsRequest = { attachment_ids: Array<string>, };
 
 export type ImportIssueAttachmentsRequest = { issue_id: string, };
@@ -534,7 +552,7 @@ export type ExecutorAction = { typ: ExecutorActionType, next_action: ExecutorAct
 
 export type McpConfig = { servers: { [key in string]?: JsonValue }, servers_path: Array<string>, template: JsonValue, preconfigured: JsonValue, is_toml_config: boolean, };
 
-export type ExecutorActionType = { "type": "CodingAgentInitialRequest" } & CodingAgentInitialRequest | { "type": "CodingAgentFollowUpRequest" } & CodingAgentFollowUpRequest | { "type": "ScriptRequest" } & ScriptRequest | { "type": "ReviewRequest" } & ReviewRequest;
+export type ExecutorActionType = { "type": "CodingAgentInitialRequest" } & CodingAgentInitialRequest | { "type": "CodingAgentFollowUpRequest" } & CodingAgentFollowUpRequest | { "type": "ScriptRequest" } & ScriptRequest | { "type": "ReviewRequest" } & ReviewRequest | { "type": "ClaudeRemoteControlRequest" } & ClaudeRemoteControlRequest;
 
 export type ExecutorConfig = { 
 /**
@@ -572,6 +590,43 @@ export type ScriptRequest = { script: string, language: ScriptRequestLanguage, c
 working_dir: string | null, };
 
 export type ScriptRequestLanguage = "Bash";
+
+export type ClaudeRemoteControlRequest = { 
+/**
+ * `--name`. Shown in the session list on claude.ai/code.
+ */
+name: string, 
+/**
+ * `--permission-mode`.
+ */
+permission_mode: ClaudeRemoteControlPermissionMode, 
+/**
+ * `--spawn`. Always `SameDir` for Vibe Kanban: the worktree already exists,
+ * and `Worktree` would nest worktrees the diff/commit machinery cannot see.
+ */
+spawn_mode: ClaudeRemoteControlSpawnMode, 
+/**
+ * `--capacity`.
+ */
+capacity?: number | null, 
+/**
+ * `--session-id`. Cannot be combined with `--continue`.
+ */
+session_id?: string | null, 
+/**
+ * `-c` / `--continue`. Reattaches to a session previously recorded for this
+ * directory or one of its git worktrees.
+ */
+continue_existing: boolean, 
+/**
+ * Optional relative path to run in (relative to container_ref). Same
+ * semantics as `ScriptRequest::working_dir`.
+ */
+working_dir: string | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type ClaudeRemoteControlPermissionMode = "default" | "acceptEdits" | "auto" | "bypassPermissions" | "dontAsk" | "plan";
+
+export type ClaudeRemoteControlSpawnMode = "same-dir" | "worktree" | "session";
 
 export enum BaseCodingAgent { CLAUDE_CODE = "CLAUDE_CODE", AMP = "AMP", GEMINI = "GEMINI", CODEX = "CODEX", OPENCODE = "OPENCODE", CURSOR_AGENT = "CURSOR_AGENT", QWEN_CODE = "QWEN_CODE", COPILOT = "COPILOT", DROID = "DROID" }
 

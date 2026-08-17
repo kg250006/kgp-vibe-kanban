@@ -266,9 +266,7 @@ pub async fn run_setup_script(
             "Workspace not found".to_string(),
         )))?;
 
-    if ExecutionProcess::has_running_non_dev_server_processes_for_workspace(pool, workspace.id)
-        .await?
-    {
+    if ExecutionProcess::has_running_blocking_processes_for_workspace(pool, workspace.id).await? {
         return Ok(ResponseJson(ApiResponse::error_with_data(
             RunScriptError::ProcessAlreadyRunning,
         )));
