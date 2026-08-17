@@ -1,0 +1,75 @@
+# KGP self-contained local Vibe Kanban — one container, SQLite, no login,
+# no Postgres/Electric, no relay, no cloud.
+#
+# Cross-platform: identical on Windows and macOS (and Linux). Everything
+# host-specific lives in ./.env, which ./setup.ps1 or ./setup.sh generates.
+#
+#   Windows:  .\setup.ps1
+#   macOS:    ./setup.sh
+#
+# Then: docker compose up -d --build  ->  http://localhost:3000
+
+name: kgp-vibe-kanban
+
+services:
+  vibe-kanban:
+    build:
+      context: ../..
+      dockerfile: docker/kgp-local/Dockerfile
+    image: kgp-vibe-kanban-local:dev
+    container_name: kgp-vibe-kanban
+    restart: unless-stopped
+
+    ports:
+      # Web UI + API
+      - "${VK_PORT:-3000}:3000"
+      # Preview proxy — serves dev servers that agents start inside workspaces
+      - "${VK_PREVIEW_PORT:-3001}:3001"
+
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      PREVIEW_PROXY_PORT: 3001
+      RUST_LOG: ${RUST_LOG:-info}
+
+      # Identity used for commits the agent makes.
+      GIT_USER_NAME: ${GIT_USER_NAME:-Vibe Kanban}
+      GIT_USER_EMAIL: ${GIT_USER_EMAIL:-vibe-kanban@localhost}
+
+      # Optional. Usually only needed on macOS hosts, where Claude Code keeps
+      # its OAuth tokens in the login Keychain rather than in a file the
+      # container can read. Leave empty to log in inside the container instead.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+      # Only needed behind a reverse proxy or a non-matching hostname. Direct
+      # http://localhost:3000 access passes the same-origin short-circuit in
+      # crates/server/src/middleware/origin.rs without any config.
+      VK_ALLOWED_ORIGINS: ${VK_ALLOWED_ORIGINS:-}
+
+      # Set to any value to keep worktrees around for debugging.
+      DISABLE_WORKTREE_CLEANUP: ${DISABLE_WORKTREE_CLEANUP:-}
+
+      # Deliberately absent: VK_SHARED_API_BASE, VK_SHARED_RELAY_API_BASE,
+      # VK_TUNNEL. With these unset, local-deployment logs "remote features
+      # disabled" and nothing leaves this machine.
+
+    volumes:
+      # Your repositories. Agents create git worktrees in here.
+      #   Windows  C:\PROJECTS        macOS  /Users/you/Projects
+      - "${VK_REPOS_DIR}:/repos"
+
+      # Container home: SQLite DB (~/.local/share/vibe-kanban), npx package
+      # cache, and Claude Code session state. Survives recreate.
+      - vk-home:/home/appuser
+
+      # Read-only view of the host Claude Code profile. The entrypoint copies
+      # credentials out of here once on first start; the container never writes
+      # back to the host profile. setup.ps1/setup.sh point these at ./noseed
+      # when the host has no profile yet, so the mounts always resolve.
+      - "${VK_CLAUDE_DIR:-./noseed}:/seed/claude:ro"
+      - "${VK_CLAUDE_JSON:-./noseed.json}:/seed/claude.json:ro"
+
+    stop_grace_period: 30s
+
+volumes:
+  vk-home:
