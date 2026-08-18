@@ -198,6 +198,12 @@ impl StandardCodingAgentExecutor for Copilot {
             model_selector: ModelSelectorConfig {
                 models: [
                     ("gpt-5.4", "GPT-5.4"),
+                    ("claude-fable-5", "Claude Fable 5"),
+                    ("claude-opus-5", "Claude Opus 5"),
+                    ("claude-opus-5-fast", "Claude Opus 5 Fast"),
+                    ("claude-sonnet-5", "Claude Sonnet 5"),
+                    ("claude-opus-4.8", "Claude Opus 4.8"),
+                    ("claude-opus-4.8-fast", "Claude Opus 4.8 Fast"),
                     ("claude-opus-4.7", "Claude Opus 4.7"),
                     ("claude-opus-4.7-fast", "Claude Opus 4.7 Fast"),
                     ("claude-opus-4.6", "Claude Opus 4.6"),
